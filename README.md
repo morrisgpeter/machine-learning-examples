@@ -1,4 +1,4 @@
-# machine-learning-examples
+# Machine learning examples
 Machine learning examples from classroom
 
 Boston data set:
