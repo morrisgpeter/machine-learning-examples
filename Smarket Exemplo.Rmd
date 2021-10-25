@@ -1,0 +1,339 @@
+---
+title: "Smarket Analysis with R Notebook"
+subtitle: "Classifier - Logistic regression, LDA, QDA, KNN & decision tree"
+author: Peter Morris
+date: October 22, 2021
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+    number_sections: true
+---
+
+# Smarket - Data set
+
+Library: ISLR2
+
+Exploratory Analysis
+S&P Stock Market Data
+Description
+Daily percentage returns for the S&P 500 stock index between 2001 and 2005.
+
+Usage
+Smarket
+Format - 
+A data frame with 1250 observations on the following 9 variables.
+
+Year - 
+The year that the observation was recorded
+
+Lag1 - 
+Percentage return for previous day
+
+Lag2 - 
+Percentage return for 2 days previous
+
+Lag3 - 
+Percentage return for 3 days previous
+
+Lag4 - 
+Percentage return for 4 days previous
+
+Lag5 - 
+Percentage return for 5 days previous
+
+Volume - 
+Volume of shares traded (number of daily shares traded in billions)
+
+Today - 
+Percentage return for today
+
+Direction - 
+A factor with levels Down and Up indicating whether the market had a positive or negative return on a given day
+
+Source  - 
+Raw values of the S&P 500 were obtained from Yahoo Finance and then converted to percentages and lagged.
+
+# Bibliography
+1. Gareth James, Daniela Witten, Trevor Hastie Robert Tibshirani - 
+An Introduction to Statistical Learning with Applications in R
+
+For further volumes: http://www.springer.com/series/417
+
+2. https://discuss.analyticsvidhya.com/t/how-does-complexity-parameter-cp-work-in-decision-tree/6589
+
+# Exploratory Analysis
+
+Variables
+```{r message=FALSE, warning=FALSE}
+# library(ISLR2)
+# library(MASS)
+# library(ggplot2)
+# library(lattice)
+# library(FNN)
+
+# package list
+libs.install <- c("ISLR2", "MASS", "ggplot2", "lattice", "FNN", "mvShapiroTest", "randtests", "pROC", "rpart", "rpart.plot")
+# installing packages
+for (lib in libs.install) {
+  if (!require(lib, character.only = TRUE)) {
+    install.packages(lib, dependencies = TRUE)
+    library(lib, character.only = TRUE)
+  }
+}
+
+attach(Smarket)
+```
+
+```{r}
+names(Smarket)
+```
+
+
+Dimension - Lines vs. Columns
+```{r}
+dim(Smarket)
+```
+Data set summary
+```{r}
+summary(Smarket)
+```
+
+```{r}
+head(Smarket)
+```
+```{r}
+tail(Smarket)
+```
+Data set is ordered by Year
+
+Pairwise correlations among predictors and Direction
+```{r}
+cor(Smarket[,-9])
+```
+
+
+```{r}
+dircolor=rep("green", nrow(Smarket))
+dircolor[Smarket$Direction=="Up"]="darkgreen"
+pairs(Smarket[,-9], col=dircolor, pch=19)
+```
+
+```{r}
+plot(Volume, col=dircolor, pch=19)
+legend("topleft", c("Up","Down"),fill=c("darkgreen","green"))
+title("Direction")
+```
+
+# Data partition
+Using Year from 2001 to 2004 for training and 2005 as testing data
+
+```{r}
+data.train <- subset(Smarket, Year != '2005')
+dim(data.train)
+data.test <- subset(Smarket, Year == '2005')
+dim(data.test)
+```
+
+
+# Logistic Classification
+## Training
+```{r}
+glm.fits <- glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data=data.train, family=binomial)
+```
+
+## Coefficients
+use the coef() to access just the coefficients
+
+use the summary() to access particular values
+```{r}
+summary(glm.fits)
+```
+
+```{r}
+coef(glm.fits)
+```
+
+```{r}
+summary(glm.fits)$coef
+```
+```{r}
+summary(glm.fits)$coef[,4]
+```
+
+## Predicting Direction for the training dataset
+```{r}
+glm.probs <- predict(glm.fits, data.train, type = "response")
+# print first 10 rows
+glm.probs[1:10]
+```
+predict gives values between 0 and 1 (float)
+
+contrast() function indicates the Down and Up boolean values created by R
+```{r}
+contrasts(Direction)
+```
+Converting probability (glm.probs) into Direction (Up and Down)
+```{r}
+glm.pred <- rep("Down", length(glm.probs))
+glm.pred[glm.probs > .5] <- "Up"
+glm.pred[1:10]
+```
+
+## Confusion Matrix - Training Data
+
+```{r}
+library(caret)
+cm <- confusionMatrix(data = factor(glm.pred), 
+                reference = factor(data.train$Direction)
+                , positive = "Up")
+cm
+cm[["byClass"]]
+```
+
+### Creating function to calculate confusion matrix and coeficients
+```{r Confusion Matrix and Coeficients, echo=FALSE}
+cfmat <- function(pred, data){
+  cfm <- table(pred, data); 
+  cfm
+  TN <- cfm[1, 1]; FP <- cfm[2, 1]; FN <- cfm[1, 2]; TP <- cfm[2, 2]
+  ACC <- (TP + TN) / (TP + TN + FN + FP)
+  MCC <- (TP * TN - FP * FN) / (sqrt(TP + FP) *
+    sqrt(TP + FN) *
+    sqrt(TN + FP) *
+    sqrt(TN + FN))
+  R <- TP / (TP + FN)
+  P <- TP / (TP + FP)
+  F <- 2 * P * R / (P + R)
+  BS<- mean((pred != data)^2)
+  cat("Accuracy = ", ACC, "\n")
+  cat("MCC = ", MCC, "\n")
+  cat("Recall = ", R, "\n")
+  cat("Precision = ", P, "\n")
+  cat("F1 = ", F, "\n")
+  cat("BS = ", BS, "\n")
+  return(list(cfm,c(ACC,MCC,R,P,F,BS)))
+}
+```
+
+
+```{r}
+cfmat(glm.pred, data.train$Direction)
+```
+
+
+## Predicting Direction for the testing dataset
+
+```{r}
+glm.probs <- predict(glm.fits, data.test, type = "response")
+# print first 10 rows
+glm.probs[1:10]
+glm.pred <- rep("Down", length(glm.probs))
+glm.pred[glm.probs > .5] <- "Up"
+glm.pred[1:10]
+```
+## Confusion Matrix - Testing Data - Logistic Classification
+```{r}
+cm <- confusionMatrix(data = factor(glm.pred), 
+                reference = factor(data.test$Direction)
+                , positive = "Up")
+cm
+cm[["byClass"]]
+```
+
+```{r}
+cfmat(glm.pred, data.test$Direction)
+```
+
+# LDA - Linear Discriminant Analysis
+
+```{r}
+mod.LDA <- lda(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data.train)
+plot(mod.LDA)
+pred.LDA <- predict(mod.LDA, data.test, type = "response")
+```
+## Confusion Matrix - Testing Data - LDA
+```{r}
+cfmat(pred.LDA[["class"]], data.test$Direction)
+```
+
+```{r}
+cm <- confusionMatrix(data = factor(pred.LDA[["class"]]), 
+                reference = factor(data.test$Direction)
+                , positive = "Up")
+cm
+cm[["byClass"]]
+```
+
+# QDA - Quadratic Discriminant Analysis
+
+```{r}
+mod.QDA <- qda(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data.train)
+pred.QDA <- predict(mod.QDA, data.test, type = "response")
+```
+## Confusion Matrix - Testing Data - QDA
+```{r}
+cfmat(pred.QDA$class, data.test$Direction)
+```
+
+```{r}
+cm <- confusionMatrix(data = factor(pred.QDA$class), 
+                reference = factor(data.test$Direction)
+                , positive = "Up")
+cm
+cm[["byClass"]]
+```
+
+# KNN - k-nearest neighbors algorithm
+```{r}
+mod.KNN <- knn(train = data.train[, 2:7], test = data.test[, 2:7], cl = data.train$Direction, k = 20)
+```
+
+```{r}
+cfmat(mod.KNN, data.test$Direction)
+```
+
+```{r}
+cm <- confusionMatrix(data = factor(mod.KNN), 
+                reference = factor(data.test$Direction)
+                , positive = "Up")
+cm
+cm[["byClass"]]
+```
+
+# Decision Tree
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+
+```{r}
+treefit <- rpart(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5, method = "class", data = data.train)
+rpart.plot(treefit)
+```
+
+
+```{r}
+treefit$cptable
+```
+
+From: https://discuss.analyticsvidhya.com/t/how-does-complexity-parameter-cp-work-in-decision-tree/6589
+
+"The complexity parameter (cp) is used to control the size of the decision tree and to select the optimal tree size. If the cost of adding another variable to the decision tree from the current node is above the value of cp, then tree building does not continue. We could also say that tree construction does not continue unless it would decrease the overall lack of fit by a factor of cp."
+
+```{r}
+plotcp(treefit)
+```
+
+## Prune
+
+```{r}
+best_cp <- treefit$cptable[which.min(treefit$cptable[, "xerror"]), "CP"]
+prunefit <- rpart::prune(treefit, cp = best_cp)
+rpart.plot(prunefit)
+```
+
+
+
