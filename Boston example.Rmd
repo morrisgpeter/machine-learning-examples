@@ -1,0 +1,193 @@
+---
+title: "Boston with R Notebook"
+subtitle: "KNN & decision tree"
+author: Peter Morris
+date: October 22, 2021
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+    number_sections: true
+---
+
+# Boston - Data set
+
+Library: Mass
+
+Housing Values in Suburbs of Boston
+<p>The Boston data frame has 506 rows and 14 columns.
+</p>
+
+<code>crim</code> per capita crime rate by town.
+</p>
+<code>crim</code> per capita crime rate by town.
+</p>
+ 
+<code>zn</code> proportion of residential land zoned for lots over 25,000 sq.ft.
+</p>
+ 
+<code>indus</code> proportion of non-retail business acres per town.
+</p>
+ 
+<code>chas</code> Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+</p>
+ 
+<code>nox</code> nitrogen oxides concentration (parts per 10 million).
+</p>
+ 
+<code>rm</code> average number of rooms per dwelling.
+</p>
+ 
+<code>age</code> proportion of owner-occupied units built prior to 1940.
+</p>
+ 
+<code>dis</code> weighted mean of distances to five Boston employment centres.
+</p>
+ 
+<code>rad</code> index of accessibility to radial highways.
+</p>
+ 
+<code>tax</code> full-value property-tax rate per \$10,000.
+</p>
+ 
+<code>ptratio</code> pupil-teacher ratio by town.
+</p>
+ 
+<code>black</code> 1000(Bk - 0.63)^2 where Bk is the proportion of blacks
+by town.
+</p>
+ 
+<code>lstat</code> lower status of the population (percent).
+</p>
+ 
+<code>medv</code> median value of owner-occupied homes in \$1000s.
+</p>
+
+
+# Exploratory Analysis
+
+```{r}
+library(MASS)
+names(Boston)
+mod <- c("MLR - Multiple linear regression","Decision Tree","KNN - k-nearest neighbors algorithm")
+quadloss <- c(0,0,0)
+quadratic.loss <- data.frame(mod,quadloss)
+```
+
+
+```{r}
+head(Boston)
+```
+
+```{r}
+tail(Boston)
+```
+
+```{r}
+dim(Boston)
+```
+
+```{r}
+summary(Boston)
+```
+
+```{r}
+cor(Boston)
+```
+
+```{r}
+dircolor=rep("yellow", nrow(Boston))
+dircolor[Boston$medv>=17.02]="orange"
+dircolor[Boston$medv>=22.53]="red"
+dircolor[Boston$medv>=25]="darkred"
+
+pairs(Boston[,-14], col=dircolor, pch=19)
+```
+
+```{r}
+plot(Boston$medv, col=dircolor, pch=19)
+title("Median Value")
+```
+
+
+# Data partition
+## Trainning data set
+```{r}
+sample_number=sample(1:nrow(Boston), size=0.7*nrow(Boston))
+data.train=Boston[sample_number,]
+dim(data.train)
+```
+## Testing data set
+```{r}
+data.test=Boston[-sample_number,]
+dim(data.test)
+```
+
+# MLR - Multiple linear regression
+
+
+```{r}
+mod.LM=lm(medv~., data=data.train)
+predit.LM=predict(mod.LM, data.test)
+quadratic.loss[1,2]=mean((data.test[,14]-predit.LM)^2)
+quadratic.loss[1,]
+```
+
+
+# Decision Tree
+## Model fitting 
+Tree rules:
+```{r}
+library(rpart)
+library(rpart.plot)
+treefit=rpart(medv~., method="anova", data=data.train) 
+rpart.rules(treefit)
+```
+Plotting the tree
+
+
+```{r}
+rpart.plot(treefit)
+```
+
+
+```{r}
+treefit$cptable
+```
+
+```{r}
+plotcp(treefit)
+```
+
+
+## Prune
+
+```{r}
+best_cp <- treefit$cptable[which.min(treefit$cptable[, "xerror"]), "CP"]
+prunefit <- rpart::prune(treefit, cp = best_cp)
+rpart.plot(prunefit)
+```
+
+
+## Evaluation of prediction model
+```{r}
+pred=predict(prunefit, data.test)
+quadratic.loss[2,2]=mean((data.test[,14]-pred)^2)
+quadratic.loss[2,]
+```
+
+# KNN - k-nearest neighbors algorithm
+```{r}
+library(FNN)
+mod.KNN=knn.reg(train=data.train[,-14], test=data.test[,-14], y=data.train[,14], k=5)
+```
+
+## Evaluation of prediction model
+```{r}
+quadratic.loss[3,2]=mean((data.test[,14]-mod.KNN$pred)^2)
+quadratic.loss[3,]
+```
+# Comparing quadratic loss
+```{r}
+quadratic.loss
+```
