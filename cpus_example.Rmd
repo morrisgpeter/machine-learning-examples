@@ -183,7 +183,7 @@ quadratic.loss[modnumber,]
 
 ```{r}
 library(randomForest)
-randomfit=randomForest(log10(perf) ~ syct + mmin + mmax + cach + chmin + chmax, mtry=round(ncol(data.train[,-9])/3), importance=TRUE, data=data.train)		
+randomfit=randomForest(log10(perf) ~ syct + mmin + mmax + cach + chmin + chmax, mtry=(6/3), importance=TRUE, data=data.train)		
 # Bagging: change mtry=13 (using all variables)
 importance(randomfit)	# variable importance measures
 ```
