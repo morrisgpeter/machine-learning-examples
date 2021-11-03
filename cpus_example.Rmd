@@ -1,0 +1,253 @@
+---
+title: "CPUS Analysis with R Notebook"
+author: "Peter Morris"
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+    number_sections: yes
+  html_document:
+    toc: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+subtitle: Classifier
+---
+
+# CPUS - Data set
+Library: MASS	
+
+R Documentation
+
+Performance of Computer CPUs
+
+Description
+
+A relative performance measure and characteristics of 209 CPUs.
+
+Usage
+
+cpus
+
+Format
+
+The components are:
+
+name - manufacturer and model.
+
+syct - cycle time in nanoseconds.
+
+mmin - minimum main memory in kilobytes.
+
+mmax - maximum main memory in kilobytes.
+
+cach - cache size in kilobytes.
+
+chmin - minimum number of channels.
+
+chmax - maximum number of channels.
+
+perf - published performance on a benchmark mix relative to an IBM 370/158-3.
+
+estperf - estimated performance (by Ein-Dor & Feldmesser).
+
+
+
+```{r message=FALSE, warning=FALSE}
+# package list
+libs.install <- c("ISLR2", "MASS", "ggplot2", "lattice", "FNN", "mvShapiroTest", "randtests", "pROC", "rpart", "rpart.plot")
+# installing packages
+for (lib in libs.install) {
+  if (!require(lib, character.only = TRUE)) {
+    install.packages(lib, dependencies = TRUE)
+    library(lib, character.only = TRUE)
+  }
+}
+require(ggplot2)
+require(dplyr)
+```
+
+# Exploratory Analysis
+```{r message=FALSE, warning=FALSE}
+attach(cpus)
+names(cpus)
+mod <- c("Decision Tree","KNN - k-nearest neighbors algorithm", "Random Forest", "Boosting")
+quadloss <- rep(0,length(mod))
+quadratic.loss <- data.frame(mod,quadloss)
+modnumber <- 0
+```
+
+```{r}
+dim(cpus)
+```
+
+```{r}
+summary(cpus)
+```
+
+
+```{r}
+colorperf <- rep("yellow", nrow(cpus))
+colorperf[cpus$perf>=summary(cpus)[2,8]]="orange"
+colorperf[cpus$perf>=summary(cpus)[3,8]]="red"
+colorperf[cpus$perf>=summary(cpus)[5,8]]="darkred"
+pairs(cpus[,-c(1,8)], col=colorperf, pch=19)
+```
+
+```{r}
+cor(cpus[,-1])
+```
+
+```{r}
+summary(log10(cpus$perf))
+```
+
+```{r}
+cpus %>% 
+  ggplot(aes(x=syct, y=perf))+
+  geom_point(col='tomato',alpha=0.5,size=3)+
+  theme_bw()
+```
+
+```{r}
+cpus %>% 
+  ggplot(aes(x=syct, y=log10(perf)))+
+  geom_point(col='tomato',alpha=0.5,size=3)+
+  theme_bw()
+```
+
+```{r}
+colorperf <- rep("yellow", nrow(cpus))
+colorperf[log10(cpus$perf)>=summary(log10(cpus$perf))[2]]="orange"
+colorperf[log10(cpus$perf)>=summary(log10(cpus$perf))[3]]="red"
+colorperf[log10(cpus$perf)>=summary(log10(cpus$perf))[5]]="darkred"
+pairs(cpus[,-c(1,8)], col=colorperf, pch=19)
+```
+
+
+# Data partition
+
+```{r}
+
+ntrain <- sample(1:nrow(cpus), size = 0.7 * nrow(cpus))
+data.train <- cpus[ntrain,]
+data.test <- cpus[-ntrain,]
+```
+
+# Decision Tree
+
+```{r}
+treefit <- rpart(log10(perf) ~ syct + mmin + mmax + cach + chmin + chmax, method = "anova", data = data.train)
+rpart.plot(treefit)
+```
+
+
+```{r}
+treefit$cptable
+```
+
+
+```{r}
+plotcp(treefit)
+```
+
+## Prune
+
+```{r}
+best_cp <- treefit$cptable[which.min(treefit$cptable[, "xerror"]), "CP"]
+prunefit <- rpart::prune(treefit, cp = best_cp)
+rpart.plot(prunefit)
+```
+
+```{r}
+modnumber = modnumber+1
+treepred <- predict(prunefit, data.test)
+quadratic.loss[modnumber,2]=mean((log10(data.test[, 8]) - treepred)^2)
+quadratic.loss[modnumber,]
+```
+
+# KNN - k-nearest neighbors algorithm
+
+```{r}
+mod.KNN <- knn.reg(train = data.train[, -c(1,8,9)], test = data.test[, -c(1,8,9)], y = log10(data.train[, 8]), k = 5)
+```
+
+```{r}
+modnumber = modnumber+1
+quadratic.loss[modnumber,2] <- mean((log10(data.test[, 8]) - mod.KNN$pred)^2)
+quadratic.loss[modnumber,]
+```
+
+# Random Forest
+
+```{r}
+library(randomForest)
+randomfit=randomForest(log10(perf) ~ syct + mmin + mmax + cach + chmin + chmax, mtry=round(ncol(data.train[,-9])/3), importance=TRUE, data=data.train)		
+# Bagging: change mtry=13 (using all variables)
+importance(randomfit)	# variable importance measures
+```
+
+```{r}
+varImpPlot(randomfit)
+```
+## Evaluation of prediction model
+```{r}
+predrandomf=predict(randomfit, data.test)
+plot(predrandomf, log10(data.test[,8]), col="tomato", pch=19); abline(0,1, col="green")
+```
+
+```{r}
+modnumber = modnumber+1
+quadratic.loss[modnumber,2]= mean((log10(data.test[, 8])-predrandomf)^2)
+quadratic.loss[modnumber,]
+```
+
+
+# Boosting:
+```{r}
+library(gbm)
+boostfit=gbm(log10(perf) ~ syct + mmin + mmax + cach + chmin + chmax,
+             n.trees=500, shrinkage=0.1, interaction.depth=1,
+             distribution="gaussian", cv.folds=5, data=data.train)
+```
+
+
+## Check performance using 5-fold cross-validation:
+```{r}
+best.iter=gbm.perf(boostfit, method="cv")
+print(best.iter)
+```
+
+## Plot relative influence of each variable:
+```{r}
+var.inf <- summary(boostfit, n.trees=best.iter)  # using estimated best number of trees
+```
+
+```{r}
+plot(boostfit, i=var.inf[1,1], n.trees=best.iter)
+```
+```{r}
+plot(boostfit, i=var.inf[2,1], n.trees=best.iter)
+```
+
+## Evaluation of prediction model
+```{r}
+pred.boost=predict(boostfit, data.test)
+```
+
+
+```{r}
+plot(pred.boost, log10(data.test[, 8])); abline(0,1, col="green")
+```
+
+```{r}
+modnumber = modnumber+1
+quadratic.loss[modnumber,2]=mean((log10(data.test[, 8])-pred.boost)^2)
+quadratic.loss[modnumber,]
+```
+
+# Comparing Classifiers
+```{r}
+quadratic.loss
+```
