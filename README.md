@@ -6,7 +6,7 @@ Boston data set:
 - continuous values (real number)
 - supervised learning
 - programming language: R
-- library: Mass
+- library: MASS
 - IDE: RStudio
 - file: R Notebook
 
@@ -19,3 +19,11 @@ Smarket data set:
 - IDE: RStudio
 - file: R Notebook
 
+cpus data set:
+- prediction of perf - published performance on a benchmark mix relative to an IBM 370/158-3.
+- continuous values (real number)
+- supervised learning
+- programming language: R
+- library: MASS
+- IDE: RStudio
+- file: R Notebook
